@@ -1,0 +1,56 @@
+name: بناء نسخة Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: فك ضغط المصدر
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Filter *.zip | Select-Object -First 1
+          Expand-Archive -Path $zip.FullName -DestinationPath pkg
+          Get-ChildItem pkg/sdf_pkg | Select-Object Name
+
+      - name: إعداد Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: تثبيت المتطلبات
+        working-directory: pkg/sdf_pkg
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: تشغيل الاختبارات
+        working-directory: pkg/sdf_pkg
+        run: python -m pytest tests/ -q
+
+      - name: بناء PyInstaller
+        working-directory: pkg/sdf_pkg
+        run: pyinstaller --noconfirm --distpath dist --workpath .winbuild build/SDFBranchSystem.spec
+
+      - name: تثبيت Inno Setup
+        run: choco install innosetup -y
+
+      - name: بناء المثبت
+        working-directory: pkg/sdf_pkg
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" build/setup.iss
+
+      - name: رفع المثبت
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDFBranchSystem-Setup
+          path: pkg/sdf_pkg/dist/SDFBranchSystem-Setup-*.exe
+
+      - name: رفع النسخة المحمولة
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDFBranchSystem-Portable
+          path: pkg/sdf_pkg/dist/SDFBranchSystem/
